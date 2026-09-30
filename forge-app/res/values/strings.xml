@@ -1,0 +1,5 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">Forge</string>
+    <string name="capture_service_desc">Reads the structure of what is on screen — the text, the state and the exact position of each control — so Forge can describe a screen to Claude precisely instead of sending a picture of it.</string>
+</resources>

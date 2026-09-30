@@ -1,0 +1,34 @@
+# The session host. Install alongside forge.service:
+#
+#   sudo cp forge-session.service forge.service /etc/systemd/system/
+#   sudo systemctl daemon-reload
+#   sudo systemctl enable --now forge-session
+#
+# This is the process that must not be restarted: it owns the Claude session, the event bus
+# and the outbox. forge.service holds the HTTP surface and proxies here, so editing a request
+# handler restarts only that and the conversation survives.
+
+# Paths below assume the repo cloned to /home/droid/forge-mobile and the daemon running
+# as that user. Edit WorkingDirectory, Environment=HOME and ExecStart to match your setup.
+
+[Unit]
+Description=Forge session host
+After=network-online.target
+
+[Service]
+Type=simple
+User=droid
+Group=users
+WorkingDirectory=/home/droid/forge-mobile
+Environment=HOME=/home/droid
+Environment=PYTHONUNBUFFERED=1
+ExecStart=/home/droid/forge-mobile/run-session.sh
+Restart=always
+RestartSec=3
+
+# Protected harder than the web layer: losing this loses the conversation, losing that costs
+# a reconnect. The OOM killer should reach for anything else first.
+OOMScoreAdjust=-800
+
+[Install]
+WantedBy=multi-user.target

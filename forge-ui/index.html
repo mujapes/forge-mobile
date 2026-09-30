@@ -1,0 +1,113 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<meta name="theme-color" content="#000000">
+<title>Forge</title>
+<link rel="stylesheet" href="/ui/style.css">
+</head>
+<body>
+  <header id="bar">
+    <div class="left">
+      <span id="dot" class="dot" title="connection"></span>
+      <button id="title" class="title">Forge</button>
+    </div>
+    <div class="right">
+      <button id="gauge" class="gauge" title="usage limits">
+        <span class="gauge-fill" id="gauge5h"></span>
+        <span class="gauge-label" id="gaugeLabel">—</span>
+      </button>
+    </div>
+  </header>
+
+  <main id="feed" aria-live="polite"></main>
+
+  <div id="pending"></div>
+
+  <!-- Pinned outside the scrolling feed on purpose: a progress card inside the transcript
+       scrolls away, and "is it working or dead?" is exactly the question you cannot answer
+       by scrolling. -->
+  <div id="activity" class="activity" hidden>
+    <span class="spin"></span>
+    <span id="activityText" class="activity-text">Working…</span>
+    <span id="activityTime" class="activity-time"></span>
+  </div>
+
+  <!-- Appears when the live tail is not resident, which the windowing makes an ordinary
+       state rather than an edge case: scroll back far enough and the newest message is
+       genuinely not in the page. -->
+  <button id="jumpNewest" class="jump-newest" hidden>↓ Newest</button>
+
+  <footer id="composer">
+    <div class="actions">
+      <button class="chip" data-act="docs">Docs</button>
+      <button class="chip danger" data-act="interrupt">Stop</button>
+    </div>
+    <div id="attached" class="attached" hidden></div>
+    <div class="inputrow">
+      <!-- contenteditable, not a textarea: a textarea's text is not in the DOM, so a touch
+           cannot be mapped to a character offset and selection can only ever be Android's.
+           As an editable element the text is real nodes, caretRangeFromPoint works, and a
+           selection is a Range we own. plaintext-only keeps paste from bringing markup. -->
+      <button id="plus" aria-label="Attach a capture">+</button>
+      <div id="input" contenteditable="plaintext-only" role="textbox" aria-multiline="true"
+           data-placeholder="Describe what you want…"></div>
+      <button id="send" aria-label="Send">↑</button>
+    </div>
+  </footer>
+
+  <!-- Rendered in the page, not by the system, so the whole interface including the keyboard
+       hot-reloads. The system keyboard is suppressed via inputmode="none" on the composer. -->
+  <div id="kbd" class="kbd" hidden></div>
+
+  <!-- Slides from the left edge, full height: a bottom sheet showed six chats and cost a
+       tap to reach. This shows twenty and opens with a swipe. -->
+  <aside id="drawer" class="drawer">
+    <div class="drawer-head">Forge</div>
+    <input id="chatSearch" class="drawer-search" placeholder="Search chats"
+           autocapitalize="none" autocorrect="off" spellcheck="false">
+    <div class="chat-filters">
+      <button id="fRecents" class="fchip on">Recents</button>
+      <button id="fArchived" class="fchip">Archived</button>
+    </div>
+    <div id="dupHint" class="dup-hint" hidden></div>
+    <!-- Row actions float over the list rather than expanding a row: every position in the
+         virtual list is derived from a fixed row height, so a row that grows puts every
+         spacer and index below it out by however much it grew. -->
+    <div id="rowPop" class="row-pop" hidden></div>
+    <div id="chatList" class="chat-list"></div>
+    <!-- Floats over the list rather than sitting after it: the list is unbounded, so a
+         button placed below it is either pinned anyway or scrolls out of reach. -->
+    <div class="drawer-foot">
+      <button id="drawerSettings" class="drawer-avatar" aria-label="Settings">F</button>
+      <button id="newChat" class="drawer-new">+ New chat</button>
+    </div>
+  </aside>
+
+  <div id="backdrop" class="backdrop" hidden></div>
+  <div id="sheet" class="sheet" hidden>
+    <div class="sheet-head">
+      <span id="sheetTitle">Recent screenshots</span>
+      <button id="sheetClose" aria-label="Close">✕</button>
+    </div>
+    <div id="shots" class="shots"></div>
+    <div id="caps" class="caps" hidden></div>
+    <div id="list" class="list" hidden></div>
+    <div id="shell" class="shell" hidden>
+      <pre id="shellOut"><code></code></pre>
+      <div class="shellrow">
+        <input id="shellIn" placeholder="git status" autocapitalize="none"
+               autocorrect="off" spellcheck="false">
+        <button id="shellRun">Run</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Before app.js and not deferred, on purpose: app.js calls into window.FR through hoisted
+       forwarders, so the renderer must already be evaluated by the time anything runs. This is
+       also the file a UI restyle mostly touches, and changing it costs no reload. -->
+  <script src="/ui/render.js"></script>
+  <script src="/ui/app.js"></script>
+</body>
+</html>

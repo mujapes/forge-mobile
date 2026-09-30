@@ -1,0 +1,960 @@
+/* Warm neutrals in fine steps, rather than a few greys and one loud accent.
+ *
+ * The old palette had five surfaces and a salmon, which meant the only tool available for
+ * emphasis was contrast -- so every emphasis became a hard jump, and the keypress highlight
+ * ended up as a flash because nothing gentler was available to say it with. It was also
+ * incoherent: the text colours are warm (#ece4da) while every surface was a pure neutral
+ * grey, and warm text on neutral grey is most of why it read cheap.
+ *
+ * So: the whole ramp is tinted to the same warmth as the type, and there are enough steps
+ * that hierarchy can be built by moving one step instead of leaping to white. Each surface
+ * is roughly a 6-8% lightness increment -- visible when you look for it, invisible when you
+ * are not, which is the right amount for a pressed key or a selected row.
+ */
+:root {
+  --bright: #fbf7f1;      /* headings and bold: a warm white, never #fff */
+  --bg:        #0b0a09;   /* page */
+  --surface:   #141211;   /* raised: cards, sheet rows at rest */
+  --surface-2: #1d1a18;   /* raised twice: inputs, keys */
+  --surface-3: #262220;   /* pressed / hovered */
+  --surface-4: #302b28;   /* pressed again, or a key under the finger */
+  --line:      #2a2523;   /* hairlines, when one is genuinely needed */
+  --warm:      #2e211d;   /* accent-tinted fill: user bubbles, active modifiers */
+  /* The pressed key, and now genuinely coloured.
+     The original mistake was not colour, it was *value*: #d9776b is lighter than the type on
+     the key, so a press blew out the letter it was meant to confirm. This keeps the accent's
+     hue at roughly two thirds its lightness -- saturated enough to read as a colour rather
+     than a grey, dark enough that the glyph stays the brightest thing on the key. */
+  --key-press: #764135;
+
+  --accent:      #d9776b; /* primary action, current selection */
+  --accent-dim:  #a8574c; /* the same idea, when it must not shout */
+  --text: #ece4da;
+  --dim:  #b8b0a8;
+  --faint: #8a8078;
+  --green: #7fbf6e;
+  --radius: 14px;
+  --safe-b: env(safe-area-inset-bottom, 0px);
+}
+
+* { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+
+/* The browser's own [hidden] rule lives in the user-agent stylesheet, so ANY author rule
+   setting display (.sheet{display:flex}, .shots{display:grid}, ...) silently overrides it.
+   Without this, el.hidden = true sets the attribute and the element stays on screen -- which
+   is exactly how the Shell sheet became impossible to close. */
+[hidden] { display: none !important; }
+
+html, body {
+  margin: 0; height: 100%;
+  background: var(--bg); color: var(--text);
+  font: 15px/1.5 system-ui, -apple-system, "Roboto", sans-serif;
+  overscroll-behavior-y: none;
+}
+
+body { display: flex; flex-direction: column; }
+
+/* ---------- header ---------- */
+#bar {
+  display: flex; align-items: center; justify-content: space-between;
+  padding: 10px 16px 12px; background: var(--bg);
+  padding-top: calc(10px + env(safe-area-inset-top, 0px));
+}
+#bar .left { display: flex; align-items: center; gap: 9px; }
+.title {
+  background: none; border: none; padding: 0; color: var(--text);
+  font-family: Georgia, "Times New Roman", serif;
+  font-size: 19px; letter-spacing: -.2px;
+}
+.title::after { content: " ▾"; color: var(--faint); font-size: 11px; }
+
+.dot {
+  width: 9px; height: 9px; border-radius: 50%;
+  background: var(--faint); transition: background .3s;
+}
+.dot.live { background: var(--green); }
+.dot.busy { background: var(--accent); animation: pulse 1.1s ease-in-out infinite; }
+.dot.dead { background: #b04a3d; }
+@keyframes pulse { 50% { opacity: .3; } }
+
+.gauge {
+  position: relative; border: none; background: var(--surface);
+  color: var(--dim); border-radius: 999px; padding: 6px 12px;
+  font-size: 11px; font-variant-numeric: tabular-nums; overflow: hidden;
+}
+.gauge-fill {
+  position: absolute; inset: 0 auto 0 0; width: 0%;
+  background: var(--warm); transition: width .6s ease;
+}
+.gauge-label { position: relative; }
+
+/* ---------- feed ---------- */
+#feed {
+  flex: 1; overflow-y: auto; padding: 18px 16px 8px;
+  display: flex; flex-direction: column; gap: 18px;
+  -webkit-overflow-scrolling: touch;
+}
+
+.msg {
+  flex: none; max-width: 100%;
+  /* content-visibility: auto was here, and earned its place when the window was 300 nodes:
+     offscreen entries skipped layout entirely. The window is now eight screens, so it buys
+     almost nothing -- and it costs scroll stability, because a skipped node reports an
+     estimated height until it is actually rendered. Prepending history full of 90px guesses
+     that resolve to 400px as you scroll into them is a transcript that shifts under you.
+     Small window, real heights. */
+}
+.msg.user {
+  align-self: flex-end; background: var(--surface-2); color: var(--text);
+  padding: 11px 16px; border-radius: 20px 20px 6px 20px;
+  max-width: 85%; white-space: pre-wrap; overflow-wrap: anywhere;
+}
+.msg.claude { align-self: flex-start; max-width: 100%; }
+
+.msg.claude p { margin: 0 0 .7em; }
+.msg.claude p:last-child { margin-bottom: 0; }
+.msg.claude h1, .msg.claude h2, .msg.claude h3 {
+  font-size: 1.02em; margin: 1em 0 .4em; color: var(--bright);
+}
+.msg.claude ul, .msg.claude ol { margin: .2em 0 .7em; padding-left: 1.3em; }
+.msg.claude li { margin: .25em 0; }
+.msg.claude a { color: var(--accent); }
+.msg.claude strong { color: var(--bright); }
+
+code {
+  font-family: ui-monospace, "Roboto Mono", monospace; font-size: .88em;
+  background: var(--surface-2); padding: 1px 5px; border-radius: 5px;
+  color: #e7b3a7;
+}
+pre {
+  background: var(--surface); border: 1px solid var(--line); border-radius: 10px;
+  padding: 11px 12px; overflow-x: auto; margin: .5em 0;
+}
+pre code { background: none; padding: 0; color: var(--text); line-height: 1.45; }
+
+.thinking { color: var(--faint); font-size: 13px; font-style: italic; }
+
+/* ---------- tool cards ---------- */
+/* flex: none is load-bearing. #feed is a column flex container, so children default to
+   flex-shrink: 1; `overflow: hidden` makes min-height: auto resolve to 0, so once the
+   transcript overflows these cards get squashed to nothing and all you see is their top and
+   bottom border -- the "grey lines". Text blocks escape it only because their min-content
+   height protects them. Every bordered feed child needs this. */
+.tool {
+  flex: none;
+  /* No content-visibility here either; see .msg. */
+  border: none; background: var(--surface);
+  border-radius: 12px; overflow: hidden;
+}
+/* Header is a plain div, never <summary>: Firefox drops a summary whose display is
+   overridden away from list-item, which collapsed each card to its 1px border. */
+.tool .thead {
+  cursor: pointer; padding: 9px 12px; display: flex; align-items: center; gap: 8px;
+  font-size: 13px; color: var(--dim); min-height: 20px;
+}
+.tool .tcaret { flex: none; color: var(--faint); font-size: 11px; }
+.tool .tbody > pre { margin: 0; }
+.tool .timg:empty { display: none; }
+.tool .timg > .tool-img {
+  display: block; max-width: 100%; height: auto; border-radius: 6px; margin: 8px 12px;
+}
+/* The same class also comes out of md() for pictures named in assistant text, where there
+   is no .timg wrapper to cap the width -- an uncapped img overflows the message column. */
+.tool-img {
+  display: block; max-width: 100%; height: auto; border-radius: 6px; margin: 8px 0;
+}
+.tool .tname { color: var(--accent); font-weight: 600; }
+.tool .tdesc {
+  color: var(--faint); overflow: hidden; text-overflow: ellipsis;
+  white-space: nowrap; flex: 1; font-family: ui-monospace, monospace; font-size: 12px;
+}
+.tool pre { margin: 0; border: none; border-top: 1px solid var(--line); border-radius: 0;
+            max-height: 45vh; font-size: 12px; }
+.tool.err { box-shadow: inset 0 0 0 1px #5a2b24; }
+
+/* ---------- permission card: the reason this app exists ---------- */
+.perm {
+  flex: none;
+  margin: 0 14px 12px; border: 1px solid var(--accent); border-radius: var(--radius);
+  background: linear-gradient(180deg, var(--warm), var(--surface));
+  padding: 14px; animation: rise .2s ease;
+}
+@keyframes rise { from { transform: translateY(8px); opacity: 0; } }
+.perm h4 { margin: 0 0 3px; font-size: 15px; }
+.perm .path {
+  font-family: ui-monospace, monospace; font-size: 12.5px; color: var(--accent);
+  overflow-wrap: anywhere; margin-bottom: 6px;
+}
+.perm .why { color: var(--dim); font-size: 12.5px; margin-bottom: 11px; }
+.perm .btns { display: flex; flex-wrap: wrap; gap: 8px; }
+/* A suggestion label carries both a rule and its scope, so it needs room to wrap. Squeezing
+   it onto one line is what let two different grants present as the same button. */
+.perm button {
+  flex: 1 1 auto; min-width: 42%; min-height: 44px; padding: 8px 14px; border-radius: 10px;
+  border: 1px solid #333; background: var(--surface-2); color: var(--text);
+  font-size: 14px; font-weight: 500; line-height: 1.25; overflow-wrap: anywhere;
+}
+.perm button.allow { background: var(--accent); border-color: var(--accent); color: #1a0f0c; }
+.perm button.deny  { background: transparent; color: var(--dim); }
+.perm button:active { transform: scale(.97); }
+
+/* ---------- Claude's questions ---------- */
+.ask {
+  flex: none;
+  margin: 0 14px 12px; border: 1px solid var(--accent); border-radius: var(--radius);
+  background: linear-gradient(180deg, var(--warm), var(--surface));
+  padding: 14px; animation: rise .2s ease;
+}
+.ask h4 { margin: 0 0 9px; font-size: 15px; line-height: 1.35; }
+.askq + .askq { margin-top: 16px; padding-top: 14px; border-top: 1px solid #32261f; }
+.askopts { display: flex; flex-direction: column; gap: 8px; }
+.askopts button {
+  display: block; width: 100%; text-align: left; min-height: 46px;
+  background: var(--surface-2); border: 1px solid #333; border-radius: 10px;
+  color: var(--text); padding: 9px 13px; font-size: 14px;
+}
+.askopts button.on { border-color: var(--accent); background: var(--warm); }
+.asklabel { display: block; font-weight: 600; }
+.askdesc { display: block; color: var(--faint); font-size: 12px; margin-top: 3px;
+           line-height: 1.4; }
+.ask .btns { display: flex; gap: 8px; margin-top: 14px; }
+.ask .btns button {
+  flex: 1 1 auto; min-height: 44px; border-radius: 10px; font-size: 14px; font-weight: 500;
+  border: 1px solid #333; background: var(--surface-2); color: var(--text);
+}
+.ask .btns .allow { background: var(--accent); border-color: var(--accent); color: #1a0f0c; }
+.ask .btns .allow[disabled] { opacity: .45; }
+.ask .btns .deny { background: transparent; color: var(--dim); }
+
+/* ---------- build ---------- */
+.build {
+  flex: none; border: none; border-radius: 12px; background: var(--surface); }
+.build .head {
+  padding: 9px 12px; font-size: 13px; color: var(--dim);
+  display: flex; justify-content: space-between; gap: 10px;
+}
+.build pre { margin: 0; border: none; border-top: 1px solid #242424; border-radius: 0;
+             max-height: 40vh; font-size: 11.5px; }
+.build .ok { color: var(--green); }
+.build .bad { color: #d4695a; }
+.install {
+  display: block; margin: 10px 12px 12px; text-align: center; min-height: 46px;
+  line-height: 46px; background: var(--green); color: #06210a; font-weight: 600;
+  border-radius: 10px; text-decoration: none;
+}
+
+/* ---------- composer ---------- */
+#composer {
+  background: var(--bg);
+  padding: 6px 12px calc(8px + var(--safe-b));
+}
+.actions { display: flex; gap: 8px; margin-bottom: 8px; overflow-x: auto; }
+/* Typing is when screen space is scarcest -- the keyboard already owns the bottom half, so
+   the action row is a strip of transcript that could be visible instead. display:none rather
+   than visibility, so the space collapses rather than being reserved and left blank. */
+body.composing .actions { display: none; }
+.chip {
+  flex: 0 0 auto; background: var(--surface); color: var(--dim);
+  border: none; border-radius: 999px; padding: 8px 15px; font-size: 13px;
+}
+.chip:active { background: var(--surface-2); }
+.chip.danger { color: #d4695a; }
+
+.inputrow { display: flex; gap: 8px; align-items: flex-end; position: relative; }
+#input {
+  flex: 1; resize: none; max-height: 40vh;
+  background: var(--surface-2); color: var(--text);
+  border: none; border-radius: 22px; padding: 12px 16px;
+  font: inherit; line-height: 1.4;
+  /* pre-wrap is load-bearing: it makes a newline inside a text node render as a line break,
+     which is what lets the text be read and written as a plain string with \n in it rather
+     than as a tree of <br> elements. */
+  white-space: pre-wrap; overflow-wrap: anywhere; overflow-y: auto;
+  min-height: 24px; outline: none;
+  /* Belt and braces with the dragstart handler: Chromium consults this before starting a
+     drag on selected text. */
+  -webkit-user-drag: none; user-drag: none;
+}
+#input:empty::before {
+  content: attr(data-placeholder);
+  color: var(--faint); pointer-events: none;
+}
+#input:focus { outline: none; box-shadow: inset 0 0 0 1px #333; }
+/* Matches the keyboard's own send key rather than out-shouting it. As a warm-white disc it
+   was the brightest element on the screen, sitting directly above a muted ⏎ that does the
+   same job -- two different answers to "which one sends?". */
+#send {
+  width: 44px; height: 44px; flex: 0 0 44px; border-radius: 50%; border: none;
+  background: var(--accent-dim); color: var(--bright); font-size: 19px; font-weight: 700;
+}
+/* Inside the textbox rather than beside it. As a flex sibling it held a 44px column for the
+   full height of a grown composer, so a long message lost that width on every line. Absolute
+   plus text-indent costs the first line only: the indent applies to one line by definition,
+   and the rest of the message wraps to the full width underneath the button. */
+#plus {
+  position: absolute; left: 6px; top: 5px; z-index: 2;
+  width: 34px; height: 34px; border-radius: 50%; border: none; padding: 0;
+  background: transparent; color: var(--dim); font-size: 23px; line-height: 34px;
+}
+#plus:active { background: var(--surface-3); color: var(--text); }
+#input { text-indent: 34px; }
+
+/* Captures list. A row is image + text because neither identifies a capture on its own:
+   the picture is what you recognise, the timestamp is what distinguishes two of them. */
+.caps { padding: 8px 14px 16px; overflow-y: auto; }
+.cap-here {
+  display: block; width: 100%; margin-bottom: 10px; padding: 12px;
+  border: 1px dashed var(--line); border-radius: 10px;
+  background: var(--surface); color: var(--text); font: inherit; font-size: 14px;
+}
+.cap-here:active { background: var(--surface-3); }
+.cap-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; }
+.cap-cell {
+  position: relative; padding: 0; border: none; border-radius: 10px;
+  background: var(--surface); overflow: hidden; font: inherit;
+  display: flex; flex-direction: column; align-items: stretch;
+}
+.cap-cell:active { background: var(--surface-3); }
+.cap-cell img { width: 100%; height: 150px; object-fit: cover; object-position: top; display: block; }
+.cap-noimg {
+  height: 150px; display: flex; align-items: center; justify-content: center;
+  color: var(--faint); font-size: 22px;
+}
+.cap-badge {
+  position: absolute; top: 5px; left: 5px;
+  background: rgba(0,0,0,.66); color: #ff6b5a;
+  font-size: 10px; font-weight: 700; letter-spacing: .04em;
+  padding: 2px 5px; border-radius: 4px;
+}
+.cap-when {
+  font-size: 11px; color: var(--faint); padding: 5px 4px; text-align: center;
+}
+
+#send:active { background: var(--accent); }
+#send:disabled { background: var(--surface-2); color: #5d5751; }
+
+.banner {
+  margin: 0 14px 10px; padding: 9px 12px; border-radius: 10px; font-size: 13px;
+  background: #2a1512; color: #e8a79c; border: 1px solid #5a2b24;
+}
+
+/* ---------- attachments ---------- */
+.attached { display: flex; gap: 8px; overflow-x: auto; margin-bottom: 8px; }
+.attached figure {
+  position: relative; margin: 0; flex: 0 0 auto;
+  border: 1px solid var(--accent); border-radius: 8px; overflow: hidden;
+}
+.attached img { display: block; height: 56px; width: auto; }
+.attached .attach-text {
+  display: flex; align-items: center; height: 56px; padding: 0 28px 0 10px;
+  font-size: 13px; color: var(--text); background: var(--surface-2);
+  white-space: nowrap;
+}
+.attached button {
+  position: absolute; top: 2px; right: 2px; width: 22px; height: 22px;
+  border: none; border-radius: 50%; background: rgba(0,0,0,.72);
+  color: var(--text); font-size: 12px; line-height: 22px; padding: 0;
+}
+
+/* ---------- screenshot sheet ---------- */
+.backdrop {
+  position: fixed; inset: 0; background: rgba(0,0,0,.55); z-index: 19;
+}
+
+.sheet {
+  position: fixed; inset: auto 0 0 0; max-height: 72vh;
+  background: var(--surface); border-top: 1px solid #2a2a2a;
+  border-radius: 16px 16px 0 0; z-index: 20;
+  display: flex; flex-direction: column;
+  padding-bottom: var(--safe-b);
+  animation: rise .18s ease;
+}
+.sheet-head {
+  display: flex; align-items: center; justify-content: space-between;
+  padding: 14px 16px; border-bottom: 1px solid #222; color: var(--dim); font-size: 14px;
+}
+.sheet-head button {
+  background: none; border: none; color: var(--text); font-size: 20px;
+  min-width: 44px; min-height: 44px; margin: -10px -8px -10px 0;
+}
+.shots {
+  overflow-y: auto; padding: 12px;
+  display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px;
+}
+.shots img {
+  width: 100%; aspect-ratio: 9/16; object-fit: cover;
+  border-radius: 8px; border: 1px solid #262626; background: var(--surface-2);
+}
+.shots img:active { border-color: var(--accent); }
+.shots .empty { grid-column: 1/-1; color: var(--faint); font-size: 13px; text-align: center;
+                padding: 24px 0; }
+
+
+/* Usage gauge escalates with pressure: at 90% the number is the reason work is about
+   to stop, so it should not look like ordinary chrome. */
+.gauge.warn .gauge-fill { background: #b8892b; }
+.gauge.hot  .gauge-fill { background: var(--accent); }
+.gauge.hot  .gauge-label { color: var(--accent); }
+
+/* ---------- activity strip ---------- */
+.activity {
+  display: flex; align-items: center; gap: 9px;
+  padding: 8px 14px; margin: 0 16px 8px;
+  border: none; border-radius: 999px; background: var(--surface);
+  font-size: 13px; color: var(--dim);
+}
+.activity-text {
+  flex: 1 1 auto; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+  font-family: ui-monospace, monospace; font-size: 12.5px; color: var(--text);
+}
+/* Monospace and fixed width so a ticking second does not jiggle the label beside it. */
+.activity-time { flex: none; font-variant-numeric: tabular-nums; color: var(--accent); }
+.spin {
+  flex: none; width: 12px; height: 12px; border-radius: 50%;
+  border: 2px solid #3a2c28; border-top-color: var(--accent);
+  animation: spin .8s linear infinite;
+}
+@keyframes spin { to { transform: rotate(360deg); } }
+@media (prefers-reduced-motion: reduce) { .spin { animation-duration: 2.4s; } }
+
+/* ---------- first-run hint ---------- */
+.hint {
+  margin: auto; text-align: center; color: var(--faint); font-size: 14px;
+  line-height: 1.7; padding: 0 24px; max-width: 30ch;
+}
+.hint b { color: var(--dim); font-weight: 600; }
+
+/* ---------- generic sheet list (models, projects) ---------- */
+.list { overflow-y: auto; padding: 8px 12px 16px; }
+/* Rows, not cards. A bordered pill per line turned a short list into a stack of boxes, and
+   since actions, toggles and choices all got the same box, the borders carried no meaning --
+   they were just the thing every row happened to have. Selection is a filled background now,
+   which is quieter than an accent outline and says "this one" rather than "look here". */
+.list button {
+  display: block; width: 100%; text-align: left; min-height: 52px;
+  background: none; border: none; border-radius: 12px;
+  color: var(--text); padding: 11px 14px; margin-bottom: 1px; font-size: 15px;
+}
+.list button:active { background: var(--surface-2); }
+.list button .sub { display: block; color: var(--faint); font-size: 12.5px; margin-top: 3px;
+                    line-height: 1.4; }
+.list button.current { background: var(--surface-2); }
+
+/* Higher specificity than `.list button`, which otherwise wins on background and rendered
+   the primary action as just another row. */
+.list button.list-done {
+  background: var(--bright); color: #17120f; text-align: center;
+  margin-top: 18px; min-height: 48px; border-radius: 999px; font-weight: 500;
+}
+.list button.list-done:active { background: #d8d8d8; }
+.list button.row-back {
+  color: var(--dim); font-size: 14px; min-height: 40px; padding-left: 6px;
+}
+.list .empty { color: var(--faint); font-size: 13px; text-align: center; padding: 24px 8px;
+               line-height: 1.6; }
+
+/* ---------- usage limit rows ---------- */
+.usage { padding: 11px 2px 13px; border-bottom: 1px solid #1e1e1e; }
+.usage:last-child { border-bottom: none; }
+.usage-top {
+  display: flex; justify-content: space-between; align-items: baseline;
+  gap: 10px; font-size: 14px; margin-bottom: 7px;
+}
+.usage-pct { color: var(--accent); font-weight: 600; font-variant-numeric: tabular-nums; }
+.usage-bar {
+  height: 6px; border-radius: 3px; background: var(--surface-2); overflow: hidden;
+}
+.usage-bar span { display: block; height: 100%; background: var(--accent); }
+.usage-sub { color: var(--faint); font-size: 12px; margin-top: 6px; }
+.list button:active { background: var(--warm); }
+
+/* ---------- shell surface ---------- */
+/* Styled after the stock terminal this app replaces: same ground, same warm text. */
+.shell { display: flex; flex-direction: column; min-height: 0; flex: 1; }
+.shell pre {
+  flex: 1; margin: 0; min-height: 30vh; max-height: 52vh; overflow: auto;
+  background: var(--surface-2); border: none; border-radius: 0;
+  font-size: 12px; line-height: 1.45; color: var(--text);
+}
+.shellrow { display: flex; gap: 8px; padding: 10px 12px; border-top: 1px solid #262626; }
+#shellIn {
+  flex: 1; background: var(--bg); color: var(--text);
+  border: 1px solid #2a2a2a; border-radius: 10px; padding: 10px 12px;
+  font-family: ui-monospace, "Roboto Mono", monospace; font-size: 13px;
+}
+#shellIn:focus { outline: none; border-color: var(--accent); }
+#shellRun {
+  background: var(--accent); color: #1a0f0c; border: none; border-radius: 10px;
+  padding: 0 18px; font-weight: 600; min-height: 42px;
+}
+.shell .code-ok { color: var(--green); }
+.shell .code-bad { color: #d4695a; }
+
+/* ---------- tables ---------- */
+/* Claude emits these often. A phone is narrow, so the table scrolls inside its own box
+   rather than forcing the whole page sideways. */
+.tablewrap { overflow-x: auto; margin: .6em 0; border: 1px solid #262626; border-radius: 10px; }
+.tablewrap table { border-collapse: collapse; width: 100%; font-size: 13.5px; }
+.tablewrap th, .tablewrap td {
+  text-align: left; padding: 8px 11px; border-bottom: 1px solid #222; vertical-align: top;
+}
+.tablewrap th { background: var(--surface-2); color: var(--bright); font-weight: 600;
+                white-space: nowrap; }
+.tablewrap tr:last-child td { border-bottom: none; }
+.tablewrap code { white-space: nowrap; }
+
+/* Free-text answer box on Claude's questions. */
+.askfree {
+  display: block; width: 100%; box-sizing: border-box; margin-top: 8px;
+  background: var(--bg); border: 1px solid #333; border-radius: 10px;
+  color: var(--text); padding: 11px 13px; font-size: 14px;
+  font-family: inherit; min-height: 44px;
+}
+.askfree:focus { outline: none; border-color: var(--accent); }
+.askfree::placeholder { color: var(--faint); }
+
+/* A banner offering an action must look like it takes one. */
+.banner.tappable {
+  cursor: pointer; border-color: var(--accent); color: var(--text);
+  display: flex; align-items: center; gap: 8px; min-height: 44px;
+}
+.banner.tappable::after { content: "⟳"; margin-left: auto; font-size: 17px; color: var(--accent); }
+.banner.tappable:active { background: var(--warm); }
+
+/* ---------- in-page keyboard ---------- */
+/* Sized and laid out against the system keyboard side by side: the letters carry digit
+   hints, the symbol layers sit where Gboard puts them, and the keys are tall enough to hit.
+   Matching an interface people already have muscle memory for beats inventing a better one. */
+.kbd {
+  flex: none; background: var(--surface); border-top: 1px solid var(--line);
+  padding: 7px 5px calc(7px + var(--safe-b));
+}
+/* Reserve room for the navigation bar only when there is one to avoid.
+   In sticky immersive the bar is hidden and merely flashes over the page after a swipe, so
+   permanently reserving space for it wastes a row's worth of screen; the swipe-cancel in the
+   key handler covers that transient case instead. env(safe-area-inset-bottom) reports 0 in
+   this WebView, so the value is set from JS rather than derived. */
+body.in-app .kbd {
+  padding-bottom: calc(var(--navpad, 26px) + var(--safe-b));
+  display: flex; flex-direction: column; gap: 7px;
+  user-select: none; -webkit-user-select: none;
+}
+/* Load-bearing: without it Chrome holds pointerdown back while it decides whether the touch
+   is a scroll, which shows up as the key highlight -- and the keypress -- lagging the finger.
+   This was lost once in a CSS rewrite and cost exactly that. */
+.kbd, .kbd .k { touch-action: none; }
+.krow { display: flex; gap: 6px; }
+.k {
+  position: relative;
+  flex: 1; min-width: 0; min-height: 52px;     /* was 44; native is taller and easier to hit */
+  /* No border. Forty outlined keys is eighty hairlines of visual noise; separating them by
+     background against the darker bed does the same job silently. */
+  /* Clearly lighter than the bed it sits on. At --surface-2 on a --bg keyboard the keys and
+     the gaps between them were nearly the same value, so the whole thing read as one dark
+     mass and a press had nowhere to travel from -- which is what "dull" was. The inset
+     highlight is a single hairline of light along the top edge, which suggests a raised face
+     without drawing a border around forty keys. */
+  background: var(--surface-3); border: none; border-radius: 8px;
+  box-shadow: inset 0 1px 0 rgba(255,255,255,.045);
+  color: var(--text); font-size: 18px; font-family: inherit; padding: 0;
+  display: flex; align-items: center; justify-content: center;
+}
+/* The press highlight is a separate promoted layer toggled by opacity. Changing the button's
+   own background-color means style recalc, repaint and raster on the main thread -- a frame or
+   more behind the finger. Opacity on a composited layer is a GPU-side change. */
+/* One step up the surface ramp, opaque.
+ *
+ * First this was the accent at full opacity -- a salmon flash, a strobe at typing speed.
+ * Then white at 16%, which over #1c1c1c still lands near #333: no hue, but close to double
+ * the luminance, so still a leap. The ramp exists precisely so this can be a step: the layer
+ * is a solid --surface-4 and the opacity toggle just reveals it, which keeps the change
+ * compositor-only while making the colour exact rather than a blend. */
+.kglow {
+  position: absolute; inset: 0; border-radius: inherit;
+  background: var(--key-press); opacity: 0;
+  will-change: opacity; pointer-events: none;
+}
+.khint, .klabel { position: relative; z-index: 1; }
+.k:active > .kglow { opacity: 1; }
+.k.kmod { background: var(--surface-2); color: var(--dim); font-size: 14px; }
+.k.kmod.on { background: var(--warm); color: var(--accent); }
+/* Caps lock has to be distinguishable from a one-shot shift at a glance. */
+/* Caps must be obvious at a glance, so this one keeps the accent -- it is a state you
+   need to notice, not a flash you need to ignore. */
+.k.kmod.caps { background: var(--accent-dim); color: var(--bright); }
+/* Muted, not neon. As full accent it was the only saturated element on a keyboard of warm
+   greys, so it stopped reading as "the important key" and started reading as a sticker. The
+   dimmed accent still marks it as the one key that does something rather than typing
+   something, without being the brightest thing on the screen while you look at the text. */
+.k.ksend { background: var(--accent-dim); color: var(--bright); font-weight: 600; }
+.k.ksend:active > .kglow { opacity: 0; }
+.k.ksend:active { background: var(--accent); }
+/* Digit hints: present for reference, never competing with the letter. */
+.khint {
+  position: absolute; top: 3px; right: 6px;
+  font-size: 10px; color: var(--faint); line-height: 1;
+}
+
+/* ---------- loading earlier history ---------- */
+.histnote {
+  flex: none; display: flex; align-items: center; justify-content: center; gap: 9px;
+  padding: 12px 0; color: var(--faint); font-size: 13px;
+}
+.histspin {
+  width: 13px; height: 13px; border-radius: 50%;
+  border: 2px solid #2c2c2c; border-top-color: var(--accent);
+  animation: spin .8s linear infinite;
+}
+
+/* ---------- chat drawer ---------- */
+/* Full height and edge-swipable, because the list is the main navigation: a bottom sheet
+   capped it at about six visible chats and cost a tap on the title to reach at all. */
+.drawer {
+  position: fixed; top: 0; bottom: 0; left: 0; z-index: 25;
+  width: min(87vw, 360px);
+  background: var(--bg); border-right: 1px solid var(--line);
+  display: flex; flex-direction: column;
+  transform: translateX(-100%);
+  /* 160ms, decelerating: the drawer is navigation, and navigation that animates
+     is navigation you are waiting on. Fast enough to feel like a cut. */
+  transition: transform .16s cubic-bezier(.2,.8,.2,1);
+  padding-top: calc(14px + env(safe-area-inset-top, 0px));
+  padding-bottom: calc(10px + var(--safe-b));
+}
+.drawer.open { transform: translateX(0); }
+/* While a finger is on it the drawer tracks the finger; animating would fight the drag. */
+.drawer.dragging { transition: none; }
+
+/* Serif, and large. The wordmark is the only place this interface is allowed to be
+   decorative, and it does the work of telling you which surface you are on. */
+.drawer-head {
+  font-family: Georgia, "Times New Roman", serif;
+  font-size: 30px; font-weight: 400; letter-spacing: -0.4px;
+  color: var(--text); padding: 10px 22px 22px;
+}
+.drawer-label {
+  color: var(--faint); font-size: 13.5px; padding: 0 22px 8px;
+}
+
+.chat-list { flex: 1; overflow-y: auto; padding: 0 12px 96px; }
+/* One line, title only. The model and the timestamp were noise at this size -- the model
+   is already in the top bar, and a list you scan for "which conversation" does not want a
+   second line of metadata under every row. */
+/* Height is fixed, not minimum, and it must match ROW_H in app.js. The virtual list derives
+   every position from it by arithmetic -- a row that grows to fit its content would put every
+   spacer and every index out by however much it grew. */
+.chat-list button {
+  display: block; width: 100%; text-align: left;
+  height: 54px; line-height: 30px;
+  /* Opaque, not transparent: this button is what covers the red delete layer behind it.
+     With `none` the whole list rendered red with "Delete" bleeding through every title. */
+  background: var(--bg); border: none; border-radius: 999px;
+  color: var(--text); padding: 12px 14px; font-size: 15px; font-family: inherit;
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+}
+.chat-row { height: 54px; }
+.chat-list button.current { background: var(--surface-2); color: var(--text); }
+.chat-list button:active { background: var(--surface); }
+.chat-list .empty { color: var(--faint); font-size: 13px; padding: 18px 14px; line-height: 1.5; }
+
+/* Fades the list out underneath instead of cutting it with a hard bar, so the last row
+   reads as "more below" rather than as the end. */
+.drawer-foot {
+  position: absolute; left: 0; right: 0; bottom: 0;
+  display: flex; align-items: center; gap: 10px;
+  padding: 22px 16px calc(12px + var(--safe-b));
+  background: linear-gradient(to bottom, rgba(11,10,9,0), var(--bg) 42%);
+  pointer-events: none;
+}
+.drawer-foot > * { pointer-events: auto; }
+.drawer-avatar {
+  width: 40px; height: 40px; flex: none; border-radius: 50%;
+  background: var(--accent); color: #1a0f0c; border: none;
+  font-family: Georgia, serif; font-size: 17px;
+}
+.drawer-new {
+  margin-left: auto; min-height: 44px; padding: 0 20px; border-radius: 999px;
+  background: var(--bright); color: #17120f; border: none;
+  font-size: 15px; font-weight: 500; font-family: inherit;
+}
+.drawer-new:active { background: #d8d8d8; }
+
+/* Section heading inside the settings list. Two unrelated axes -- model and effort -- as one
+   undivided column of identical rows read as one list where picking a second item undoes
+   the first. */
+.list-head {
+  color: var(--faint); font-size: 12px; line-height: 1.4;
+  padding: 18px 14px 8px; border-top: 1px solid var(--line); margin-top: 10px;
+  letter-spacing: .3px;
+}
+.list-head:first-child { border-top: none; margin-top: 0; padding-top: 6px; }
+
+/* A choice offered inside a message, not chrome: it should read as a sentence you can tap,
+   which is what stops it competing with the composer for attention. */
+.linkbtn {
+  background: none; border: none; padding: 8px 0 0; margin: 0;
+  color: var(--accent); font: inherit; font-size: 14px; text-align: left;
+}
+.linkbtn:active { opacity: .6; }
+
+/* ---------- chat rows: swipe to delete ---------- */
+.chat-row { position: relative; }
+/* The red is behind the row, revealed as the button slides off it, so the gesture explains
+   itself before you have committed to anything. */
+.chat-row.deletable::before {
+  content: "Delete";
+  position: absolute; inset: 0; display: flex; align-items: center;
+  padding-left: 18px; border-radius: 999px;
+  background: #3a1714; color: #e88b7c; font-size: 13.5px;
+}
+.chat-row > button { position: relative; }
+.chat-row.confirming::before { content: none; }
+.chat-row.confirming > button { background: none; }
+
+.confirm-q {
+  color: var(--text); font-size: 13.5px; line-height: 1.4;
+  padding: 10px 14px 0;
+}
+.confirm-btns { display: flex; gap: 8px; padding: 10px 14px 12px; }
+/* .chat-list button is display:block/width:100% for chat rows; these are not chat rows. */
+.chat-list .confirm-btns button {
+  display: inline-block; width: auto; flex: 1 1 0; min-height: 40px;
+  border-radius: 999px; background: var(--surface-2); color: var(--dim);
+  font-size: 14px; padding: 8px 12px; text-align: center; white-space: normal;
+}
+.chat-list .confirm-btns button.danger { background: #5a2019; color: #ffd9d2; }
+.chat-list .confirm-btns button[disabled] { opacity: .5; }
+
+.list-done {
+  margin: 14px 0 4px; min-height: 46px; border-radius: 999px;
+  background: var(--bright); color: #17120f; border: none;
+  font-size: 15px; font-weight: 500; text-align: center;
+}
+.list-done:active { background: #d8d8d8; }
+
+/* ---------- backend reload notice ---------- */
+/* The host restarts itself only while idle, so nothing is lost -- but the socket drops for
+   a second or two and the composer is dead in that window. Saying so is the difference
+   between a seamless update and a message that seemed to vanish. */
+body.reloading #composer { position: relative; }
+body.reloading #composer::before {
+  content: "Applying backend update…";
+  position: absolute; left: 12px; right: 12px; top: -26px;
+  padding: 5px 12px; border-radius: 999px;
+  background: var(--warm); color: var(--accent);
+  font-size: 12.5px; text-align: center;
+}
+body.reloading #input { opacity: .5; }
+
+/* Chrome anchors scroll position itself when content is inserted above the viewport. Our
+   own anchoring then applies a second correction for the same insert, and the two compound
+   into a jump. Exactly one of them should be in charge, and ours is the one that knows
+   about content-visibility resolving heights a frame late. */
+#feed { overflow-anchor: none; }
+
+.histnote.floating {
+  position: fixed; left: 50%; transform: translateX(-50%);
+  z-index: 12; pointer-events: none;
+  padding: 6px 14px; border-radius: 999px;
+  background: rgba(24,24,24,.94); color: var(--faint);
+  font-size: 12.5px; white-space: nowrap;
+  display: flex; align-items: center; gap: 8px;
+}
+
+/* Sits above the composer, over the feed. Deliberately small and quiet: it is a shortcut,
+   not an alert, and it is visible for as long as you are reading back. */
+.jump-newest {
+  position: fixed; left: 50%; transform: translateX(-50%);
+  bottom: calc(var(--composer-h, 108px) + var(--safe-b));
+  z-index: 14; border: none; border-radius: 999px;
+  padding: 8px 16px; font-size: 13px; font-family: inherit;
+  background: rgba(40,40,40,.96); color: var(--text);
+  box-shadow: 0 2px 10px rgba(0,0,0,.5);
+}
+.jump-newest:active { background: rgba(60,60,60,.96); }
+
+/* ---------- chat list: search, buckets, flags ---------- */
+.drawer-search {
+  margin: 0 14px 10px; min-height: 40px; border-radius: 999px; border: none;
+  background: var(--surface-2); color: var(--text);
+  padding: 9px 16px; font: inherit; font-size: 14px;
+}
+.drawer-search:focus { outline: none; box-shadow: inset 0 0 0 1px #333; }
+
+.bucket {
+  color: var(--faint); font-size: 12px; padding: 14px 14px 5px;
+}
+.chat-list button.archived { color: var(--faint); }
+
+.archived-toggle {
+  display: block; width: 100%; text-align: left;
+  background: none; border: none; color: var(--faint);
+  font: inherit; font-size: 13px; padding: 14px;
+}
+
+/* A suggestion, styled as one: quiet, and dismissible by acting or ignoring. */
+.dup-hint {
+  margin: 0 14px 10px; padding: 10px 12px; border-radius: 12px;
+  background: var(--warm); color: var(--dim); font-size: 12.5px; line-height: 1.45;
+}
+.dup-hint button {
+  display: block; margin-top: 8px; background: none; border: none;
+  color: var(--accent); font: inherit; font-size: 12.5px; padding: 0;
+}
+
+/* Replaces inline date headers: they would have broken the uniform row height the list's
+   arithmetic depends on, and telling you where you are is what they were for. */
+.bucket.sticky {
+  position: sticky; top: 0; z-index: 2;
+  background: var(--bg); padding: 6px 22px 6px;
+}
+
+/* ---------- chat list filters + row popover ---------- */
+.chat-filters { display: flex; gap: 8px; padding: 0 14px 10px; }
+.fchip {
+  flex: 0 0 auto; border: none; border-radius: 999px;
+  background: var(--surface); color: var(--faint);
+  padding: 7px 14px; font-size: 13px; font-family: inherit;
+}
+.fchip.on { background: var(--surface-2); color: var(--text); }
+
+.row-pop {
+  position: absolute; left: 12px; right: 12px; z-index: 6;
+  background: var(--surface-2); border-radius: 14px;
+  box-shadow: 0 6px 20px rgba(0,0,0,.6);
+  padding: 12px 14px;
+}
+.row-pop .pop-title {
+  color: var(--text); font-size: 14px; line-height: 1.35; margin-bottom: 10px;
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+.row-pop .pop-btns { display: flex; gap: 8px; flex-wrap: wrap; }
+.row-pop button {
+  flex: 1 1 0; min-width: 72px; min-height: 40px; border: none; border-radius: 999px;
+  background: var(--surface-2); color: var(--dim);
+  font-size: 13.5px; font-family: inherit; padding: 8px 10px;
+}
+.row-pop button.danger { background: #5a2019; color: #ffd9d2; }
+
+/* ---------- settings sheet rows ---------- */
+/* A tick column on every choice row, present whether or not it is ticked, so labels line up
+   and the selected one is marked by content rather than by the row moving. */
+.list .row-tick {
+  flex: 0 0 22px; color: var(--accent); font-size: 14px; line-height: 1.3;
+}
+.list .row-body { flex: 1 1 auto; min-width: 0; }
+.list button:has(.row-body) { display: flex; align-items: flex-start; gap: 4px; }
+
+/* Toggles carry their state on the right, because "Immersive mode" alone never says whether
+   tapping turns it on or off -- the old rows were labelled with the action, so the label
+   changed under you and you could not tell the current state from a glance. */
+.row-state {
+  flex: 0 0 auto; align-self: center;
+  border-radius: 999px; padding: 4px 11px; font-size: 12px;
+  background: var(--surface-2); color: var(--faint);
+}
+.row-state.on { background: var(--warm); color: var(--accent); }
+
+/* Summary row: the setting on the left, its current value on the right. The value is the
+   reason you opened the sheet most of the time, so it should be readable without tapping. */
+.row-summary { display: flex; align-items: center; gap: 10px; }
+.row-value { flex: 0 0 auto; color: var(--accent); font-size: 14px; }
+.row-chev { flex: 0 0 auto; color: var(--faint); font-size: 17px; line-height: 1; }
+
+
+
+/* ---------- zh: a five-second joke, kept out of the layout ---------- */
+/* hue-rotate is a filter, so it composites and never reflows -- the whole page can cycle
+   colour without a single box moving. The per-element colours give it somewhere to cycle
+   from, so the motion reads as a wave across the screen rather than one flat tint. */
+body.zh { animation: zhhue 1.1s linear infinite; }
+@keyframes zhhue { to { filter: hue-rotate(360deg); } }
+body.zh *                     { color: #ff5f6d !important; }
+body.zh *:nth-of-type(6n+1)   { color: #ffc371 !important; }
+body.zh *:nth-of-type(6n+2)   { color: #f7e463 !important; }
+body.zh *:nth-of-type(6n+3)   { color: #47e56b !important; }
+body.zh *:nth-of-type(6n+4)   { color: #2bd2ff !important; }
+body.zh *:nth-of-type(6n+5)   { color: #c86dd7 !important; }
+
+
+/* Replaces Android's action bar, which the WebView no longer raises. */
+.txt-menu {
+  position: fixed; z-index: 40; display: flex; gap: 2px;
+  padding: 4px; border-radius: 999px;
+  background: var(--surface-4); box-shadow: 0 3px 16px rgba(0,0,0,.65);
+}
+.txt-menu button {
+  border: none; border-radius: 999px; background: none; color: var(--text);
+  font: inherit; font-size: 13.5px; padding: 8px 14px; white-space: nowrap;
+}
+.txt-menu button:active { background: var(--accent-dim); color: var(--bright); }
+
+/* Our own selection handles, since Chromium draws its own only as part of the action mode.
+   The teardrop is a square with three rounded corners, rotated -- the same shape Android
+   uses, so the gesture reads as the one it replaces. */
+.sel-handle {
+  position: fixed; z-index: 41; width: 22px; height: 22px;
+  margin-top: -2px; touch-action: none;
+}
+.sel-handle::before {
+  content: ""; display: block; width: 14px; height: 14px; margin: 2px auto 0;
+  background: var(--accent);
+  border-radius: 0 50% 50% 50%; transform: rotate(45deg);
+}
+
+#input::selection, #input *::selection {
+  background: var(--accent-dim); color: var(--bright);
+}
+
+/* Our caret, for when the composer is deliberately not editable. */
+.ce-caret {
+  position: fixed; z-index: 39; width: 2px;
+  background: var(--accent); pointer-events: none;
+  animation: caretblink 1.06s steps(1) infinite;
+}
+@keyframes caretblink { 50% { opacity: 0; } }
+
+/* The selection highlight, painted rather than delegated. Below the handles and the menu,
+   above nothing -- it must not intercept the touches that adjust it. */
+.sel-layer { position: fixed; inset: 0; z-index: 38; pointer-events: none; }
+.sel-layer > div { position: fixed; background: var(--accent-dim); opacity: .55; }
+
+/* Selectable only when it is editable, which is to say only when Android owns it.
+   Without this Chromium still runs its own long-press word select on the text, paints its
+   highlight and handles for a frame, and is then cleared by ours -- the flash of the old
+   layer. We never ask the browser for a selection any more, and getClientRects works on a
+   Range regardless, so forbidding its selection costs nothing and removes the duplicate. */
+#input:not([contenteditable]) { -webkit-user-select: none; user-select: none; }
+#input[contenteditable] { -webkit-user-select: text; user-select: text; }
+
+/* ---------- slash command picker ---------- */
+.cmd-menu {
+  position: fixed; left: 12px; right: 12px; z-index: 42;
+  max-height: 46vh; overflow-y: auto;
+  background: var(--surface-2); border-radius: 14px;
+  box-shadow: 0 6px 22px rgba(0,0,0,.7); padding: 6px;
+}
+.cmd-menu button {
+  display: block; width: 100%; text-align: left; border: none; background: none;
+  color: var(--text); font: inherit; padding: 10px 12px; border-radius: 10px;
+}
+.cmd-menu button:active { background: var(--surface-3); }
+.cmd-name { display: block; font-size: 14.5px; color: var(--accent); }
+.cmd-desc {
+  display: block; color: var(--faint); font-size: 12px; margin-top: 2px;
+  line-height: 1.35; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+
+/* Confirms a copy landed, since a clipboard write is otherwise completely silent. */
+.copied { animation: copyflash .42s ease; }
+@keyframes copyflash {
+  0%   { background-color: var(--warm); }
+  100% { background-color: transparent; }
+}
+/* pre and tool bodies have their own background, so fade from the accent tint back to it
+   rather than to transparent, which would flash the page through them. */
+pre.copied, .tool .tbody.copied { animation: copyflashsurface .42s ease; }
+@keyframes copyflashsurface {
+  0%   { background-color: var(--key-press); }
+  100% { background-color: var(--surface); }
+}

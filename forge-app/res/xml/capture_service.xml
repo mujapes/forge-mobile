@@ -1,0 +1,19 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  What the capture service is allowed to see.
+
+  typeWindowContentChanged is the expensive one and is deliberately included: without it a
+  recording cannot tell that a list settled or a dialog appeared, only that a window swapped.
+  CaptureService throttles those bursts down to one line rather than filtering them here, so
+  the decision about what is noise stays in code that can explain itself.
+
+  flagReportViewIds is what makes "#send" possible instead of just "Button"; without it the
+  resource name is stripped and every control is identified only by its text.
+-->
+<accessibility-service xmlns:android="http://schemas.android.com/apk/res/android"
+    android:accessibilityEventTypes="typeViewClicked|typeViewLongClicked|typeViewScrolled|typeViewTextChanged|typeViewFocused|typeWindowStateChanged|typeWindowContentChanged"
+    android:accessibilityFeedbackType="feedbackGeneric"
+    android:accessibilityFlags="flagReportViewIds|flagIncludeNotImportantViews|flagRequestAccessibilityButton"
+    android:canRetrieveWindowContent="true"
+    android:description="@string/capture_service_desc"
+    android:notificationTimeout="100" />

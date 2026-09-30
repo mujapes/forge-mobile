@@ -1,0 +1,111 @@
+<?xml version="1.0" encoding="utf-8"?>
+<manifest xmlns:android="http://schemas.android.com/apk/res/android"
+    package="com.forge.shell">
+
+    <uses-permission android:name="android.permission.INTERNET" />
+    <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />
+    <uses-permission android:name="android.permission.REQUEST_INSTALL_PACKAGES" />
+
+    <!-- Keeps the event stream open while the app is backgrounded, so a finished turn or a
+         pending question can still reach the user. dataSync is the honest type: this service
+         does nothing but hold a network stream. -->
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_DATA_SYNC" />
+    <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
+
+    <!-- Captures. The screen's pixels come from MediaProjection and its structure from an
+         accessibility service, and both are needed: the tree has exact text and exact bounds
+         but no colour, while the image has colour and shape but nothing exact. Since Android
+         14 a projection may only run under a foreground service that declares the
+         mediaProjection type, hence the extra type alongside dataSync. -->
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_MEDIA_PROJECTION" />
+    <uses-permission android:name="android.permission.WRITE_EXTERNAL_STORAGE"
+        android:maxSdkVersion="28" />
+
+    <!-- Enumerate installed packages so the host app can be discovered rather than guessed.
+         Google Play restricts this permission; the <queries> block below is the portable
+         fallback, and discovery degrades to it when enumeration returns nothing. -->
+    <uses-permission android:name="android.permission.QUERY_ALL_PACKAGES" />
+
+    <!-- Declared up front on purpose. A manifest change is the one thing that still forces a
+         rebuild and a manual install, so the permissions worth having later are declared now
+         and merely *requested* at runtime from JS. Granting stays a per-permission decision;
+         this only removes the rebuild from the path. -->
+    <uses-permission android:name="android.permission.CAMERA" />
+    <uses-permission android:name="android.permission.RECORD_AUDIO" />
+    <uses-permission android:name="android.permission.VIBRATE" />
+    <uses-permission android:name="android.permission.WAKE_LOCK" />
+    <uses-permission android:name="android.permission.READ_MEDIA_IMAGES" />
+    <uses-permission android:name="android.permission.READ_MEDIA_VIDEO" />
+    <uses-permission android:name="android.permission.READ_MEDIA_AUDIO" />
+    <uses-permission android:name="android.permission.ACCESS_COARSE_LOCATION" />
+    <uses-permission android:name="android.permission.ACCESS_FINE_LOCATION" />
+
+    <!-- Android 11+ hides other packages unless they are declared here: without this,
+         getLaunchIntentForPackage() returns null and the Terminal button would silently
+         never appear. Candidates, because the Linux Terminal's package name is not
+         something this side of the VM can verify. -->
+    <queries>
+        <package android:name="com.android.virtualization.terminal" />
+        <package android:name="com.google.android.virtualization.terminal" />
+        <package android:name="com.android.virtualization.vmlauncher" />
+        <package android:name="com.google.android.virtualization.vmlauncher" />
+    </queries>
+
+    <application
+        android:allowBackup="true"
+        android:label="@string/app_name"
+        android:icon="@mipmap/ic_launcher"
+        android:usesCleartextTraffic="true"
+        android:supportsRtl="true"
+        android:theme="@android:style/Theme.Material.NoActionBar">
+
+        <activity
+            android:name=".MainActivity"
+            android:exported="true"
+            android:configChanges="orientation|screenSize|keyboardHidden|smallestScreenSize|screenLayout"
+            android:windowSoftInputMode="adjustResize"
+            android:launchMode="singleTask">
+            <intent-filter>
+                <action android:name="android.intent.action.MAIN" />
+                <category android:name="android.intent.category.LAUNCHER" />
+            </intent-filter>
+        </activity>
+
+        <service
+            android:name=".ForgeService"
+            android:exported="false"
+            android:foregroundServiceType="dataSync|mediaProjection" />
+
+        <!-- The structural half of a capture. Must be turned on by hand in
+             Settings > Accessibility; there is no way for an app to grant this to itself,
+             which is the point of the permission. -->
+        <service
+            android:name=".CaptureService"
+            android:exported="false"
+            android:permission="android.permission.BIND_ACCESSIBILITY_SERVICE">
+            <intent-filter>
+                <action android:name="android.accessibilityservice.AccessibilityService" />
+            </intent-filter>
+            <meta-data
+                android:name="android.accessibilityservice"
+                android:resource="@xml/capture_service" />
+        </service>
+
+        <!-- Exists only because createScreenCaptureIntent() cannot be started from a
+             Service. No UI of its own; it collects consent and finishes. -->
+        <activity
+            android:name=".ConsentActivity"
+            android:exported="false"
+            android:excludeFromRecents="true"
+            android:theme="@android:style/Theme.Translucent.NoTitleBar" />
+
+        <!-- Hands built APKs to the package installer. A hand-rolled provider because the
+             build deliberately has no AndroidX dependency. -->
+        <provider
+            android:name=".ApkProvider"
+            android:authorities="com.forge.shell.apks"
+            android:exported="false"
+            android:grantUriPermissions="true" />
+    </application>
+</manifest>

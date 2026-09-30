@@ -1,0 +1,41 @@
+# System-level unit: install with
+#
+#   sudo cp forge.service /etc/systemd/system/
+#   sudo systemctl daemon-reload && sudo systemctl enable --now forge
+#
+# Deliberately a *system* service rather than a user one. A --user unit cannot set a negative
+# OOMScoreAdjust (that needs privileges) and in practice inherits a positive score, making the
+# daemon a more attractive kill target than default -- the opposite of what is wanted on a VM
+# with under 1GB of RAM where the OOM killer has already killed a `claude` process mid-task.
+#
+# Running Claude inside this service rather than inside a terminal session is the whole point:
+# a terminal crash, an OOM kill, or a closed app costs a few seconds of reconnection instead
+# of the session. The session id is persisted, so the conversation resumes rather than restarts.
+
+# Paths below assume the repo cloned to /home/droid/forge-mobile and the daemon running
+# as that user. Edit WorkingDirectory, Environment=HOME and ExecStart to match your setup.
+
+[Unit]
+Description=Forge daemon
+After=network-online.target forge-session.service
+Wants=forge-session.service
+
+[Service]
+Type=simple
+User=droid
+Group=users
+WorkingDirectory=/home/droid/forge-mobile
+Environment=HOME=/home/droid
+Environment=PYTHONUNBUFFERED=1
+# Proxy conversation state to the session host instead of owning it.
+Environment=FORGE_SESSION_URL=http://127.0.0.1:8788
+ExecStart=/home/droid/forge-mobile/run.sh
+Restart=always
+RestartSec=3
+
+# Survive memory pressure. Build JVMs are spawned as children and are far better OOM
+# candidates than the process holding the conversation.
+OOMScoreAdjust=-500
+
+[Install]
+WantedBy=multi-user.target
